@@ -1,11 +1,20 @@
+"""
+    THIS FILE IS NOT INTENDED TO BE RUN, HOWEVER YOU CAN RUN IT TO SEE THE SPLIT OF THE DATASETS
+    ALONG WITH CLASS NAMES AND NUMBER OF CLASSES. IT IS USED FOR COMMON FUNCTIONS AND LOADING DATASETS
+"""
+
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, random_split
 from PIL import Image
 from torchvision import transforms as T
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-import os
+import torchinfo, os, copy, time, warnings, torch, tqdm
 
-def load_dataset(datasetName, BATCH_SIZE=64):
+warnings.filterwarnings("ignore")
+
+DATASETS = ["CIFAKE", "LANDUSE", "XRAY"]
+
+def load_dataset(datasetName, BATCH_SIZE=128):
     # If datasetName is not in the list, then it will return error
     dsList = ["CIFAKE", "LANDUSE", "XRAY"]
     if datasetName not in dsList:
@@ -30,7 +39,6 @@ def load_dataset(datasetName, BATCH_SIZE=64):
         ])
     else:
         transform = default_transform # If LANDUSE dataset, then use default transform
-
 
     dir = os.path.join('Datasets/')
 
@@ -65,15 +73,156 @@ def load_dataset(datasetName, BATCH_SIZE=64):
     print("Train dataset size: {}".format(len(train_dataset)))
     print("Test dataset size: {}".format(len(test_dataset)))
     print("Validation dataset size: {}".format(len(val_dataset)))
+    print("Number of classes: {}".format(len(train_dataset.classes)))
+    print("Classes: {}".format(train_dataset.classes))
     print("=========================================")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=int(BATCH_SIZE/4), shuffle=False, num_workers=4, pin_memory=True)
 
-    return (train_loader, test_loader, val_loader), (len(train_dataset), len(test_dataset), len(val_dataset))
+    # Return:
+    #   (train_loader, test_loader, val_loader): tuple of loaders
+    #   (len(train_dataset), len(test_dataset), len(val_dataset)): tuple of dataset sizes
+    #   len(train_dataset.classes): number of classes
+    #   train_dataset.classes: list of class names
+    return (train_loader, test_loader, val_loader), (len(train_dataset), len(test_dataset), len(val_dataset)), len(train_dataset.classes), train_dataset.classes
 
+def add_head(model):
+    for name, param in model.named_parameters():
+        if 'head' not in name:
+            param.requires_grad = False
 
-load_dataset("CIFAKE")
-load_dataset("LANDUSE")
-load_dataset("XRAY")
+    torchinfo.summary(model, input_size=(128, 3, 224, 224), verbose=1)
+    return model
+
+def train_model(
+        model, 
+        data_loaders, 
+        dataset_sizes, 
+        device, 
+        criterion, 
+        optimizer, 
+        scheduler, 
+        epochs=10,
+        ):
+    since = time.time()
+    fallback_model = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
+
+    model = add_head(model)
+
+    train_loss = []
+    train_acc = []
+    val_loss = []
+    val_acc = []
+
+    for epoch in range(epochs):
+        print(f'Epoch {epoch + 1}/{epochs}')
+        print('====================')
+
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()
+            else:
+                model.eval()
+
+            running_loss, running_corrects = 0.0, 0.0
+
+            for inputs, labels in tqdm(data_loaders[phase]):
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+
+                optimizer.zero_grad()
+
+                with torch.set_grad_enabled(phase == 'train'): # No autograd makes validation quicker
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
+
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
+
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+
+            if phase == 'train':
+                scheduler.step()
+
+            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_acc = (running_corrects.double() / dataset_sizes[phase]).cpu().numpy()
+
+            print("{} Loss: {:.4f} Acc: {:.4f}".format(phase, epoch_loss, epoch_acc))
+
+            if phase == 'train':
+                train_loss.append(epoch_loss)
+                train_acc.append(epoch_acc)
+            if phase == 'val':
+                val_loss.append(epoch_loss)
+                val_acc.append(epoch_acc)
+
+            if phase == 'val' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = copy.deepcopy(model.state_dict())
+
+        print('') # Spacer
+
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    print('Best val Acc: {:4f}'.format(best_acc))
+
+    model.load_state_dict(best_model_wts)
+    return model, train_loss, train_acc, val_loss, val_acc
+
+def graph_saver(
+        modelName, 
+        datasetName, 
+        epochs, 
+        learning_rate, 
+        batch_size, 
+        train_loss, 
+        train_acc, 
+        val_loss, 
+        val_acc,
+        ):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Save as two seperate svg graphs
+    plt.figure()
+    plt.plot(np.arange(len(train_loss)), train_loss, label="Train Loss")
+    plt.plot(np.arange(len(val_loss)), val_loss, label="Validation Loss")
+    plt.legend()
+    plt.suptitle("{} Loss across {}".format(modelName, datasetName))
+    plt.title('Epochs: {}, Learning Rate: {}, Batch Size: {}'.format(epochs, learning_rate, batch_size))
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    for i in range(len(train_loss)):
+        plt.annotate("{:.2f}".format(train_loss[i]), (i, train_loss[i]))
+    for i in range(len(val_loss)):
+        plt.annotate("{:.2f}".format(val_loss[i]), (i, val_loss[i]))
+    plt.savefig("Graphs/{}_{}_loss.svg".format(modelName, datasetName))
+
+    plt.figure()
+    plt.plot(np.arange(len(train_acc)), train_acc, label="Train Accuracy")
+    plt.plot(np.arange(len(val_acc)), val_acc, label="Validation Accuracy")
+    plt.legend()
+    plt.suptitle("{} Accuracy across {}".format(modelName, datasetName))
+    plt.title('Epochs: {}, Learning Rate: {}, Batch Size: {}'.format(epochs, learning_rate, batch_size))
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy")
+    for i in range(len(train_acc)):
+        plt.annotate("{:.2f}".format(train_acc[i]), (i, train_acc[i]))
+    for i in range(len(val_acc)):
+        plt.annotate("{:.2f}".format(val_acc[i]), (i, val_acc[i]))
+    plt.savefig("Graphs/{}_{}_acc.svg".format(modelName, datasetName))
+
+    plt.close('all')
+
+print("Common functions loaded.")
+
+if __name__ == '__main__':
+    load_dataset("CIFAKE")
+    load_dataset("LANDUSE")
+    load_dataset("XRAY")
