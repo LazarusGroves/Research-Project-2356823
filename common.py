@@ -8,11 +8,12 @@ from torch.utils.data import DataLoader, random_split
 from PIL import Image
 from torchvision import transforms as T
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-import torchinfo, os, copy, time, warnings, torch, tqdm
+from tqdm import tqdm
+import torchinfo, os, copy, time, warnings, torch
 
 warnings.filterwarnings("ignore")
 
-DATASETS = ["CIFAKE", "LANDUSE", "XRAY"]
+DATASETS = ["LANDUSE", "XRAY", "CIFAKE"]
 
 def load_dataset(datasetName, BATCH_SIZE=128):
     # If datasetName is not in the list, then it will return error
@@ -21,7 +22,8 @@ def load_dataset(datasetName, BATCH_SIZE=128):
         raise ValueError("Dataset name is not in the list: CIFAKE, LANDUSE, XRAY")
 
     default_transform = T.Compose([ # Default transform, bilinear interpolation and resize to 224x224
-        T.Resize(224),
+        T.Resize(256),
+        T.CenterCrop(224),
         T.ToTensor(),
         T.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD), # ImageNet normalizing due to pre-trained model
     ])
@@ -45,19 +47,33 @@ def load_dataset(datasetName, BATCH_SIZE=128):
     test_dataset = None
     train_dataset = None
     # Boiler plate match case 
+
+    classes = None
+    classesLen = None
+
     match datasetName:
         case "CIFAKE":
             train_dir = os.path.join(dir, 'CIFAKE/train/')
             test_dir = os.path.join(dir, 'CIFAKE/test/')
+
             train_dataset = ImageFolder(train_dir, transform=transform)
+            classes = train_dataset.classes
+            classesLen = len(train_dataset.classes)
+
             test_dataset = ImageFolder(test_dir, transform=default_transform)
             # No Validation data for CIFAKE so sample 20% of the test data for validation
             test_dataset, val_dataset = random_split(test_dataset, [int(len(test_dataset)*0.30), int(len(test_dataset)*0.70)])
+            # Since this dataset is so big, we will take only 10% of each dataset
+            train_dataset, _ = random_split(train_dataset, [int(len(train_dataset)*0.10), int(len(train_dataset)*0.90)])
+            test_dataset, _ = random_split(test_dataset, [int(len(test_dataset)*0.10), int(len(test_dataset)*0.90)])
+            val_dataset, _ = random_split(val_dataset, [int(len(val_dataset)*0.10), int(len(val_dataset)*0.90)])
         case "LANDUSE":
             train_dir = os.path.join(dir, 'UC_Merced_Land_Use/train/')
             test_dir = os.path.join(dir, 'UC_Merced_Land_Use/test/')
             val_dir = os.path.join(dir, 'UC_Merced_Land_Use/val/')
             train_dataset = ImageFolder(train_dir, transform=transform)
+            classes = train_dataset.classes
+            classesLen = len(train_dataset.classes)
             test_dataset = ImageFolder(test_dir, transform=default_transform)
             val_dataset = ImageFolder(val_dir, transform=default_transform)
         case "XRAY":
@@ -65,6 +81,8 @@ def load_dataset(datasetName, BATCH_SIZE=128):
             test_dir = os.path.join(dir, 'chest-xray-classification/test/')
             val_dir = os.path.join(dir, 'chest-xray-classification/val/')
             train_dataset = ImageFolder(train_dir, transform=transform)
+            classes = train_dataset.classes
+            classesLen = len(train_dataset.classes)
             test_dataset = ImageFolder(test_dir, transform=default_transform)
             val_dataset = ImageFolder(val_dir, transform=default_transform)
 
@@ -73,27 +91,30 @@ def load_dataset(datasetName, BATCH_SIZE=128):
     print("Train dataset size: {}".format(len(train_dataset)))
     print("Test dataset size: {}".format(len(test_dataset)))
     print("Validation dataset size: {}".format(len(val_dataset)))
-    print("Number of classes: {}".format(len(train_dataset.classes)))
-    print("Classes: {}".format(train_dataset.classes))
+    print("Number of classes: {}".format(len(classes)))
+    print("Classes: {}".format(classes))
     print("=========================================")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=int(BATCH_SIZE/4), shuffle=False, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
     # Return:
     #   (train_loader, test_loader, val_loader): tuple of loaders
     #   (len(train_dataset), len(test_dataset), len(val_dataset)): tuple of dataset sizes
     #   len(train_dataset.classes): number of classes
     #   train_dataset.classes: list of class names
-    return (train_loader, test_loader, val_loader), (len(train_dataset), len(test_dataset), len(val_dataset)), len(train_dataset.classes), train_dataset.classes
+    return (train_loader, test_loader, val_loader), (len(train_dataset), len(test_dataset), len(val_dataset)), classesLen, classes
 
 def add_head(model):
     for name, param in model.named_parameters():
         if 'head' not in name:
             param.requires_grad = False
 
-    torchinfo.summary(model, input_size=(128, 3, 224, 224), verbose=1)
+    # torchinfo.summary(model, input_size=(128, 3, 224, 224), verbose=1)
+    # Print trainable parameters
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Trainable parameters: {}".format(trainable_params))
     return model
 
 def train_model(
@@ -189,6 +210,10 @@ def graph_saver(
     import matplotlib.pyplot as plt
     import numpy as np
 
+    # Make dir for dataset if it does not exist
+    if not os.path.exists("Graphs/{}".format(datasetName)):
+        os.makedirs("Graphs/{}".format(datasetName))
+
     # Save as two seperate svg graphs
     plt.figure()
     plt.plot(np.arange(len(train_loss)), train_loss, label="Train Loss")
@@ -202,7 +227,7 @@ def graph_saver(
         plt.annotate("{:.2f}".format(train_loss[i]), (i, train_loss[i]))
     for i in range(len(val_loss)):
         plt.annotate("{:.2f}".format(val_loss[i]), (i, val_loss[i]))
-    plt.savefig("Graphs/{}_{}_loss.svg".format(modelName, datasetName))
+    plt.savefig("Graphs/{}/{}_{}_{}_{}_loss.svg".format(datasetName, modelName, epochs, learning_rate, batch_size))
 
     plt.figure()
     plt.plot(np.arange(len(train_acc)), train_acc, label="Train Accuracy")
@@ -216,11 +241,9 @@ def graph_saver(
         plt.annotate("{:.2f}".format(train_acc[i]), (i, train_acc[i]))
     for i in range(len(val_acc)):
         plt.annotate("{:.2f}".format(val_acc[i]), (i, val_acc[i]))
-    plt.savefig("Graphs/{}_{}_acc.svg".format(modelName, datasetName))
+    plt.savefig("Graphs/{}/{}_{}_{}_{}_acc.svg".format(datasetName, modelName, epochs, learning_rate, batch_size))
 
     plt.close('all')
-
-print("Common functions loaded.")
 
 if __name__ == '__main__':
     load_dataset("CIFAKE")
