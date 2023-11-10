@@ -1,5 +1,5 @@
 import torch
-import os
+import os, timm
 from timm import create_model
 from timm.loss import LabelSmoothingCrossEntropy
 from common import load_dataset, DATASETS
@@ -13,14 +13,14 @@ def main():
         CELNAME = 'CrossEntropyLoss'
         LSCEL = LabelSmoothingCrossEntropy()
         LSCELNAME = 'LabelSmoothingCrossEntropy'
-
+            
         (train_loader, test_loader, val_loader), (train_len, test_len, val_len), num_classes, classes = load_dataset(datasetName)
-        for modelName in os.listdir('Models/ConvNeXt/{}'.format(datasetName)):
+        for modelName in os.listdir('Models/SwinT/{}'.format(datasetName)):
             #if modelName doesnt contain 'model_25' skip
             if 'model_25' not in modelName:
                 continue
-            model = create_model('convnext_base', pretrained=True, num_classes=num_classes)
-            model.load_state_dict(torch.load('Models/ConvNeXt/{}/{}'.format(datasetName, modelName)))
+            model = create_model('swin_base_patch4_window7_224', pretrained=True, num_classes=num_classes)
+            model.load_state_dict(torch.load('Models/SwinT/{}/{}'.format(datasetName, modelName)))
             model.to(device)
             model.eval()
             correct = 0

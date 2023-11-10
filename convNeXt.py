@@ -1,11 +1,11 @@
 """
-    CONVNEXT PRETRAINED-22K MODEL
+    ConvNeXt PRETRAINED-22K MODEL
 """
 
 from common import train_model, add_head, load_dataset, graph_saver, DATASETS
 from timm.loss import LabelSmoothingCrossEntropy
 from torch.optim import AdamW, lr_scheduler
-import argparse, timm, torch, os
+import argparse, timm, torch, os, time
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -42,7 +42,26 @@ def main(EPOCHS, LEARNING_RATE, BATCH_SIZE):
                                                                       optimizer, 
                                                                       exp_lr_scheduler, 
                                                                       EPOCHS)
-        
+            
+        # Write the above portion to a file
+        with open('ConvNeXt.txt', 'a') as f:
+            f.write("=========================================\n")
+            f.write("Model: ConvNeXt, Dataset: {}\n".format(datasetName))
+            f.write("Epochs: {}, Learning Rate: {}, Batch Size: {}\n".format(EPOCHS, LEARNING_RATE, BATCH_SIZE))
+            for i in range(EPOCHS):
+                f.write("{:.4f} ".format(train_loss[i]))
+            f.write("\n")
+            for i in range(EPOCHS):
+                f.write("{:.4f} ".format(train_acc[i]))
+            f.write("\n")
+            for i in range(EPOCHS):
+                f.write("{:.4f} ".format(val_loss[i]))
+            f.write("\n")
+            for i in range(EPOCHS):
+                f.write("{:.4f} ".format(val_acc[i]))
+            f.write("\n")
+            f.write("=========================================\n")
+
         graph_saver('ConvNeXt', datasetName, EPOCHS, LEARNING_RATE, BATCH_SIZE, train_loss, train_acc, val_loss, val_acc)
 
         # Create model directory for ConvNeXt if it doesn't exist
@@ -70,11 +89,24 @@ if __name__ == '__main__':
     main(args.e, args.lr, args.b)
     """
 
-    epochs = [5, 10]
-    learning_rates = [0.0001, 0.001]
-    batch_sizes = [64, 128]
+    # epochs = [5, 10]
+    # learning_rates = [0.0001, 0.001]
+    # batch_sizes = [64, 128]
+    epochs = [25]
+    learning_rates = [0.001]
+    batch_sizes = [64]
+
+    start_time = time.time()
 
     for e in epochs:
         for lr in learning_rates:
             for b in batch_sizes:
                 main(e, lr, b)
+
+
+    end_time = time.time()
+    print("Total Time: {}".format(end_time - start_time))
+
+    # Write to file
+    with open('ConvNeXt.txt', 'a') as f:
+        f.write("Total Time: {}\n".format(end_time - start_time))

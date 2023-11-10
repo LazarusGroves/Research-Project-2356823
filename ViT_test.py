@@ -15,12 +15,12 @@ def main():
         LSCELNAME = 'LabelSmoothingCrossEntropy'
 
         (train_loader, test_loader, val_loader), (train_len, test_len, val_len), num_classes, classes = load_dataset(datasetName)
-        for modelName in os.listdir('Models/ConvNeXt/{}'.format(datasetName)):
+        for modelName in os.listdir('Models/ViT/{}'.format(datasetName)):
             #if modelName doesnt contain 'model_25' skip
             if 'model_25' not in modelName:
                 continue
-            model = create_model('convnext_base', pretrained=True, num_classes=num_classes)
-            model.load_state_dict(torch.load('Models/ConvNeXt/{}/{}'.format(datasetName, modelName)))
+            model = create_model('vit_base_patch16_224', pretrained=True, num_classes=num_classes)
+            model.load_state_dict(torch.load('Models/ViT/{}/{}'.format(datasetName, modelName)))
             model.to(device)
             model.eval()
             correct = 0
@@ -47,7 +47,7 @@ def main():
                     # Collect true labels and predicted labels for later use
                     all_labels.extend(labels.cpu().numpy())
                     all_predicted.extend(predicted.cpu().numpy())
-
+            
             CEL_Loss /= len(test_loader)
             LSCEL_Loss /= len(test_loader)
             avg_acc = correct / total
@@ -65,3 +65,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

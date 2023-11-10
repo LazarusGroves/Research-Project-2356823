@@ -1,5 +1,5 @@
 """
-    ViT PRETRAINED-22K MODEL
+    SwinT PRETRAINED-22K MODEL
 """
 
 from common import train_model, add_head, load_dataset, graph_saver, DATASETS
@@ -10,12 +10,12 @@ import argparse, timm, torch, os, time
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def main(EPOCHS, LEARNING_RATE, BATCH_SIZE):
-    print("ViT Pretrained-22k Model")
+    print("SwinT Pretrained-22k Model")
     print("Epochs: {}, Learning Rate: {}, Batch Size: {}".format(EPOCHS, LEARNING_RATE, BATCH_SIZE))
     print("=========================================")
     for datasetName in DATASETS:
         (train_loader, test_loader, val_loader), (train_len, test_len, val_len), num_classes, classes = load_dataset(datasetName, BATCH_SIZE)
-        model = timm.create_model('vit_base_patch16_224', pretrained=True, num_classes=num_classes)
+        model = timm.create_model('swin_base_patch4_window7_224', pretrained=True, num_classes=num_classes)
 
         data_loaders = {
             "train": train_loader,
@@ -44,9 +44,9 @@ def main(EPOCHS, LEARNING_RATE, BATCH_SIZE):
                                                                       EPOCHS)
             
         # Write the above portion to a file
-        with open('ViT.txt', 'a') as f:
+        with open('SwinT.txt', 'a') as f:
             f.write("=========================================\n")
-            f.write("Model: ViT, Dataset: {}\n".format(datasetName))
+            f.write("Model: SwinT, Dataset: {}\n".format(datasetName))
             f.write("Epochs: {}, Learning Rate: {}, Batch Size: {}\n".format(EPOCHS, LEARNING_RATE, BATCH_SIZE))
             for i in range(EPOCHS):
                 f.write("{:.4f} ".format(train_loss[i]))
@@ -62,15 +62,15 @@ def main(EPOCHS, LEARNING_RATE, BATCH_SIZE):
             f.write("\n")
             f.write("=========================================\n")
 
-        graph_saver('ViT', datasetName, EPOCHS, LEARNING_RATE, BATCH_SIZE, train_loss, train_acc, val_loss, val_acc)
+        graph_saver('SwinT', datasetName, EPOCHS, LEARNING_RATE, BATCH_SIZE, train_loss, train_acc, val_loss, val_acc)
 
-        # Create model directory for ViT if it doesn't exist
-        if not os.path.exists('models/ViT'):
-            os.makedirs('models/ViT')
-        if not os.path.exists('models/ViT/{}'.format(datasetName)):
-            os.makedirs('models/ViT/{}'.format(datasetName))
+        # Create model directory for SwinT if it doesn't exist
+        if not os.path.exists('models/SwinT'):
+            os.makedirs('models/SwinT')
+        if not os.path.exists('models/SwinT/{}'.format(datasetName)):
+            os.makedirs('models/SwinT/{}'.format(datasetName))
 
-        torch.save(model.state_dict(), 'models/ViT/{}/model_{}_{}_{}.pt'.format(datasetName, EPOCHS, LEARNING_RATE, BATCH_SIZE))
+        torch.save(model.state_dict(), 'models/SwinT/{}/model_{}_{}_{}.pt'.format(datasetName, EPOCHS, LEARNING_RATE, BATCH_SIZE))
         del model
         torch.cuda.empty_cache()
 
@@ -105,8 +105,8 @@ if __name__ == '__main__':
 
 
     end_time = time.time()
-    print("Total time taken: {}".format(end_time - start_time))
+    print("Total Time: {}".format(end_time - start_time))
 
     # Write to file
-    with open('ViT.txt', 'a') as f:
-        f.write("Total time taken: {}".format(end_time - start_time))
+    with open('SwinT.txt', 'a') as f:
+        f.write("Total Time: {}\n".format(end_time - start_time))
