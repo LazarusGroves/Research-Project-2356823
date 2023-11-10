@@ -3,7 +3,7 @@
 #### [supervised by Dr Hairong Bau (Hairong.Bau@wits.ac.za)]
 #### Stuart 'Lazarus' Groves - 2356823
 
-For a full description and breakdown of the research pertaining to this repository please see the pdf inside the main directory. All aknowledgements are made there.
+For a full description and breakdown of the research pertaining to this repository please see the pdf inside the main directory. All references and usage credits are made there in full. For additional data from the research itself, please consult the Data.xlsx file. Three sheets contain a full collection of all the data that was obtained in order to reach the conclusion of the paper.
 
 For the datasets, three datasets were used: 'LANDUSE', 'XRAY' and 'CIFAKE'
 
