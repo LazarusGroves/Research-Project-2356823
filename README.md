@@ -11,4 +11,4 @@ LANDUSE - https://www.kaggle.com/datasets/apollo2506/landuse-scene-classificatio
 
 XRAY - https://huggingface.co/datasets/keremberke/chest-xray-classification (credit to user keremberke)
 
-CIFAKE - https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images
+CIFAKE - https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images (credit to user birdy654)
